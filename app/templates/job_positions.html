@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% block title %}Job Positions{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-briefcase-fill me-2 text-warning"></i>Job Positions</h2>
+        <p class="text-muted mb-0 small">Manage job titles and roles</p>
+    </div>
+    <button class="btn btn-warning" onclick="showCreateModal()">
+        <i class="bi bi-plus-circle me-1"></i>Add Job Position
+    </button>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">#</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th class="text-end pe-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="positions-tbody">
+                <tr><td colspan="5" class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>Loading…
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal fade" id="posModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="posModalTitle">Job Position</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="pos-form-error" class="alert alert-danger d-none"></div>
+                <input type="hidden" id="pos-id">
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
+                    <input type="text" id="pos-title" class="form-control" placeholder="e.g. Senior Developer">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Description</label>
+                    <textarea id="pos-description" class="form-control" rows="3"
+                              placeholder="Position responsibilities and requirements"></textarea>
+                </div>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="pos-active" checked>
+                    <label class="form-check-label" for="pos-active">Active</label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="savePos()">
+                    <i class="bi bi-check-lg me-1"></i>Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">Are you sure you want to delete <strong id="delete-name"></strong>?</div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="confirm-delete-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_URL = '/api/jon-position/';
+let posModal, deleteModal;
+
+document.addEventListener('DOMContentLoaded', () => {
+    posModal    = new bootstrap.Modal(document.getElementById('posModal'));
+    deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    loadPositions();
+});
+
+function onLoginSuccess() { loadPositions(); }
+function onLogout()       { loadPositions(); }
+
+async function loadPositions() {
+    const tbody = document.getElementById('positions-tbody');
+    const result = await apiRequest(API_URL);
+    if (!result.ok) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-danger">Failed to load data.</td></tr>';
+        return;
+    }
+    const positions = result.data;
+    if (!positions.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-muted">No job positions found. Add one to get started.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = positions.map(p => `
+        <tr>
+            <td class="ps-3 text-muted small align-middle">${p.id}</td>
+            <td class="align-middle fw-semibold">${escHtml(p.title)}</td>
+            <td class="align-middle text-muted small">${p.description ? escHtml(p.description) : '—'}</td>
+            <td class="align-middle">
+                ${p.is_active
+                    ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>'
+                    : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactive</span>'}
+            </td>
+            <td class="text-end pe-3 align-middle">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editPos(${p.id})" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete(${p.id}, '${escHtml(p.title)}')" title="Delete">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+function showCreateModal() {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to create job positions.', 'warning'); return; }
+    document.getElementById('posModalTitle').textContent = 'Add Job Position';
+    document.getElementById('pos-id').value          = '';
+    document.getElementById('pos-title').value        = '';
+    document.getElementById('pos-description').value  = '';
+    document.getElementById('pos-active').checked     = true;
+    document.getElementById('pos-form-error').classList.add('d-none');
+    posModal.show();
+}
+
+async function editPos(id) {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to edit job positions.', 'warning'); return; }
+    const result = await apiRequest(`${API_URL}${id}/`);
+    if (!result.ok) { showAlert('Failed to load job position.', 'danger'); return; }
+    const p = result.data;
+    document.getElementById('posModalTitle').textContent = 'Edit Job Position';
+    document.getElementById('pos-id').value          = p.id;
+    document.getElementById('pos-title').value        = p.title;
+    document.getElementById('pos-description').value  = p.description || '';
+    document.getElementById('pos-active').checked     = p.is_active;
+    document.getElementById('pos-form-error').classList.add('d-none');
+    posModal.show();
+}
+
+async function savePos() {
+    const id    = document.getElementById('pos-id').value;
+    const title = document.getElementById('pos-title').value.trim();
+    const errDiv = document.getElementById('pos-form-error');
+    if (!title) { errDiv.textContent = 'Title is required.'; errDiv.classList.remove('d-none'); return; }
+
+    const body = {
+        title,
+        description: document.getElementById('pos-description').value.trim() || null,
+        is_active:   document.getElementById('pos-active').checked,
+    };
+    const result = await apiRequest(id ? `${API_URL}${id}/` : API_URL, id ? 'PUT' : 'POST', body);
+    if (result.ok) {
+        posModal.hide();
+        loadPositions();
+        showAlert(`Job position <strong>${escHtml(title)}</strong> ${id ? 'updated' : 'created'} successfully.`);
+    } else {
+        errDiv.textContent = formatErrors(result.data);
+        errDiv.classList.remove('d-none');
+    }
+}
+
+function confirmDelete(id, name) {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to delete job positions.', 'warning'); return; }
+    document.getElementById('delete-name').textContent = name;
+    document.getElementById('confirm-delete-btn').onclick = () => deletePos(id);
+    deleteModal.show();
+}
+
+async function deletePos(id) {
+    const result = await apiRequest(`${API_URL}${id}/`, 'DELETE');
+    deleteModal.hide();
+    if (result.ok) {
+        loadPositions();
+        showAlert('Job position deleted successfully.');
+    } else {
+        showAlert('Failed to delete job position.', 'danger');
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatErrors(data) {
+    if (typeof data === 'string') return data;
+    return Object.entries(data).map(([k,v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ');
+}
+</script>
+{% endblock %}
