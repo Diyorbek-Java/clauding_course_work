@@ -25,7 +25,6 @@ class User(AbstractUser):
 
     # User role and employee details
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=EMPLOYEE)
-    employee_id = models.CharField(max_length=100, unique=True, db_index=True, help_text="Unique employee identifier")
     full_name = models.CharField(max_length=200)
     department = models.ForeignKey(
         Department,
@@ -67,9 +66,8 @@ class User(AbstractUser):
     class Meta:
         ordering = ['full_name']
         indexes = [
-            models.Index(fields=['employee_id']),
             models.Index(fields=['role']),
         ]
 
     def __str__(self):
-        return f"{self.full_name} ({self.employee_id})"
+        return f"{self.full_name} ({self.username})"

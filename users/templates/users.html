@@ -1,0 +1,325 @@
+{% extends 'base.html' %}
+{% block title %}Users{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-0"><i class="bi bi-person-fill me-2 text-primary"></i>Users</h2>
+        <p class="text-muted mb-0 small">Manage system users</p>
+    </div>
+    <button class="btn btn-primary" onclick="showCreateModal()">
+        <i class="bi bi-plus-circle me-1"></i>Add User
+    </button>
+</div>
+
+<div id="alert-container"></div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-3">#</th>
+                    <th>Full Name</th>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Department</th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th class="text-end pe-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-tbody">
+                <tr><td colspan="8" class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>Loading…
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="userModalTitle">User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="user-form-error" class="alert alert-danger d-none"></div>
+                <input type="hidden" id="user-id">
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Username <span class="text-danger">*</span></label>
+                        <input type="text" id="user-username" class="form-control" placeholder="e.g. john.doe">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">
+                            Password
+                            <small id="password-hint" class="text-muted fw-normal">(leave blank to keep current)</small>
+                        </label>
+                        <input type="password" id="user-password" class="form-control" placeholder="Enter password">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Full Name <span class="text-danger">*</span></label>
+                        <input type="text" id="user-fullname" class="form-control" placeholder="e.g. John Doe">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Phone Number</label>
+                        <input type="text" id="user-phone" class="form-control" placeholder="+998111111111">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Role</label>
+                        <select id="user-role" class="form-select">
+                            <option value="EMPLOYEE">Employee</option>
+                            <option value="MANAGER">Manager</option>
+                            <option value="ORG_MANAGER">Organization Manager</option>
+                            <option value="ORG_ADMIN">Organization Admin</option>
+                            <option value="ADMIN">Administrator</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Department</label>
+                        <select id="user-department" class="form-select">
+                            <option value="">— None —</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Job Position</label>
+                        <select id="user-position" class="form-select">
+                            <option value="">— None —</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="user-active" checked>
+                            <label class="form-check-label" for="user-active">Active</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveUser()">
+                    <i class="bi bi-check-lg me-1"></i>Save
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">Are you sure you want to delete <strong id="delete-name"></strong>?</div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger btn-sm" id="confirm-delete-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const USER_URL = '/api/users/';
+const DEPT_URL = '/api/departments/';
+const POS_URL  = '/api/jon-position/';
+
+const ROLE_LABELS = {
+    ADMIN: 'Administrator',
+    MANAGER: 'Manager',
+    EMPLOYEE: 'Employee',
+    ORG_MANAGER: 'Org Manager',
+    ORG_ADMIN: 'Org Admin',
+};
+
+let userModal, deleteModal;
+let deptMap = {};
+let posMap  = {};
+
+document.addEventListener('DOMContentLoaded', () => {
+    userModal   = new bootstrap.Modal(document.getElementById('userModal'));
+    deleteModal = new bootstrap.Modal(document.getElementById('deleteModal'));
+    loadAll();
+});
+
+function onLoginSuccess() { loadAll(); }
+function onLogout()       { loadAll(); }
+
+async function loadAll() {
+    await Promise.all([loadDeptsDropdown(), loadPositionsDropdown()]);
+    await loadUsers();
+}
+
+async function loadDeptsDropdown() {
+    const result = await apiRequest(DEPT_URL);
+    if (!result.ok) return;
+    deptMap = {};
+    const select = document.getElementById('user-department');
+    select.innerHTML = '<option value="">— None —</option>';
+    result.data.forEach(d => {
+        deptMap[d.id] = d.name;
+        select.insertAdjacentHTML('beforeend', `<option value="${d.id}">${escHtml(d.name)}</option>`);
+    });
+}
+
+async function loadPositionsDropdown() {
+    const result = await apiRequest(POS_URL);
+    if (!result.ok) return;
+    posMap = {};
+    const select = document.getElementById('user-position');
+    select.innerHTML = '<option value="">— None —</option>';
+    result.data.forEach(p => {
+        posMap[p.id] = p.title;
+        select.insertAdjacentHTML('beforeend', `<option value="${p.id}">${escHtml(p.title)}</option>`);
+    });
+}
+
+async function loadUsers() {
+    const tbody = document.getElementById('users-tbody');
+    const result = await apiRequest(USER_URL);
+    if (!result.ok) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-danger">Failed to load data.</td></tr>';
+        return;
+    }
+    const users = result.data;
+    if (!users.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No users found. Add one to get started.</td></tr>';
+        return;
+    }
+    tbody.innerHTML = users.map(u => `
+        <tr>
+            <td class="ps-3 text-muted small align-middle">${u.id}</td>
+            <td class="align-middle fw-semibold">${escHtml(u.full_name || '—')}</td>
+            <td class="align-middle text-muted small">${escHtml(u.username)}</td>
+            <td class="align-middle">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                    ${escHtml(ROLE_LABELS[u.role] || u.role)}
+                </span>
+            </td>
+            <td class="align-middle text-muted small">
+                ${u.department ? escHtml(deptMap[u.department] || `Dept #${u.department}`) : '—'}
+            </td>
+            <td class="align-middle text-muted small">${u.phone_number ? escHtml(u.phone_number) : '—'}</td>
+            <td class="align-middle">
+                ${u.is_active
+                    ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>'
+                    : '<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">Inactive</span>'}
+            </td>
+            <td class="text-end pe-3 align-middle">
+                <button class="btn btn-sm btn-outline-primary me-1" onclick="editUser(${u.id})" title="Edit">
+                    <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" onclick="confirmDelete(${u.id}, '${escHtml(u.full_name || u.username)}')" title="Delete">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>`).join('');
+}
+
+function showCreateModal() {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to create users.', 'warning'); return; }
+    document.getElementById('userModalTitle').textContent    = 'Add User';
+    document.getElementById('user-id').value                = '';
+    document.getElementById('user-username').value          = '';
+    document.getElementById('user-password').value          = '';
+    document.getElementById('user-fullname').value          = '';
+    document.getElementById('user-phone').value             = '';
+    document.getElementById('user-role').value              = 'EMPLOYEE';
+    document.getElementById('user-department').value        = '';
+    document.getElementById('user-position').value          = '';
+    document.getElementById('user-active').checked          = true;
+    document.getElementById('password-hint').textContent    = '(required for new user)';
+    document.getElementById('user-form-error').classList.add('d-none');
+    userModal.show();
+}
+
+async function editUser(id) {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to edit users.', 'warning'); return; }
+    const result = await apiRequest(`${USER_URL}${id}/`);
+    if (!result.ok) { showAlert('Failed to load user.', 'danger'); return; }
+    const u = result.data;
+    document.getElementById('userModalTitle').textContent    = 'Edit User';
+    document.getElementById('user-id').value                = u.id;
+    document.getElementById('user-username').value          = u.username;
+    document.getElementById('user-password').value          = '';
+    document.getElementById('user-fullname').value          = u.full_name || '';
+    document.getElementById('user-phone').value             = u.phone_number || '';
+    document.getElementById('user-role').value              = u.role || 'EMPLOYEE';
+    document.getElementById('user-department').value        = u.department || '';
+    document.getElementById('user-position').value          = u.position || '';
+    document.getElementById('user-active').checked          = u.is_active;
+    document.getElementById('password-hint').textContent    = '(leave blank to keep current)';
+    document.getElementById('user-form-error').classList.add('d-none');
+    userModal.show();
+}
+
+async function saveUser() {
+    const id       = document.getElementById('user-id').value;
+    const username = document.getElementById('user-username').value.trim();
+    const fullname = document.getElementById('user-fullname').value.trim();
+    const password = document.getElementById('user-password').value;
+    const errDiv   = document.getElementById('user-form-error');
+
+    if (!username) { errDiv.textContent = 'Username is required.'; errDiv.classList.remove('d-none'); return; }
+    if (!fullname) { errDiv.textContent = 'Full name is required.'; errDiv.classList.remove('d-none'); return; }
+    if (!id && !password) { errDiv.textContent = 'Password is required for new users.'; errDiv.classList.remove('d-none'); return; }
+
+    const body = {
+        username,
+        full_name:   fullname,
+        role:        document.getElementById('user-role').value,
+        phone_number: document.getElementById('user-phone').value.trim() || null,
+        department:  document.getElementById('user-department').value || null,
+        position:    document.getElementById('user-position').value || null,
+        is_active:   document.getElementById('user-active').checked,
+    };
+    if (password) body.password = password;
+
+    const result = await apiRequest(id ? `${USER_URL}${id}/` : USER_URL, id ? 'PUT' : 'POST', body);
+    if (result.ok) {
+        userModal.hide();
+        loadUsers();
+        showAlert(`User <strong>${escHtml(fullname)}</strong> ${id ? 'updated' : 'created'} successfully.`);
+    } else {
+        errDiv.textContent = formatErrors(result.data);
+        errDiv.classList.remove('d-none');
+    }
+}
+
+function confirmDelete(id, name) {
+    if (!getToken()) { showAlert('Please <a href="#" onclick="showLoginModal()">login</a> to delete users.', 'warning'); return; }
+    document.getElementById('delete-name').textContent = name;
+    document.getElementById('confirm-delete-btn').onclick = () => deleteUser(id);
+    deleteModal.show();
+}
+
+async function deleteUser(id) {
+    const result = await apiRequest(`${USER_URL}${id}/`, 'DELETE');
+    deleteModal.hide();
+    if (result.ok) {
+        loadUsers();
+        showAlert('User deleted successfully.');
+    } else {
+        showAlert('Failed to delete user.', 'danger');
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function formatErrors(data) {
+    if (typeof data === 'string') return data;
+    return Object.entries(data).map(([k,v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ');
+}
+</script>
+{% endblock %}
