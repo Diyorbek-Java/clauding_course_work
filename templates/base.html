@@ -168,7 +168,14 @@
     async function apiRequest(url, method = 'GET', body = null) {
         const opts = { method, headers: authHeaders() };
         if (body !== null) opts.body = JSON.stringify(body);
-        const resp = await fetch(url, opts);
+        let resp = await fetch(url, opts);
+        // Stale/invalid token — clear it and retry anonymously (GET only)
+        if (resp.status === 401 && getToken() && method === 'GET') {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('username');
+            updateAuthUI();
+            resp = await fetch(url, { method, headers: { 'Content-Type': 'application/json' } });
+        }
         if (resp.status === 204) return { ok: true, data: null };
         const data = await resp.json();
         return { ok: resp.ok, status: resp.status, data };
