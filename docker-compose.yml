@@ -2,11 +2,11 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: cw_claude
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "8432:5432"
+      - "${DB_HOST_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -16,15 +16,12 @@ services:
       sh -c "python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     ports:
-      - "8000:8000"
+      - "${WEB_PORT}:8000"
+    env_file:
+      - .env
     environment:
-      DB_NAME: cw_claude
-      DB_USER: postgres
-      DB_PASSWORD: password123
       DB_HOST: db
-      DB_PORT: 8432
-      DEBUG: "True"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,0.0.0.0,51.120.123.248"
+      DB_PORT: "5432"
     volumes:
       - .:/app
     depends_on:
