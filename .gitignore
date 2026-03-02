@@ -1,0 +1,4 @@
+.venv
+report.docx
+.env
+__pycache__/
